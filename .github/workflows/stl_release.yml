@@ -1,0 +1,337 @@
+name: STL Release
+
+# Watches the STLs/ tree and, on any change there, builds two zip bundles
+# (the LDO kit list and a secondary list) and publishes them as the
+# "latest" GitHub Release, overwriting the previous one.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'STLs/**'
+      - '.github/workflows/stl_release.yml'
+  workflow_dispatch:  # also allow manual runs from the Actions tab
+
+permissions:
+  contents: write  # required to create/update releases and upload assets
+
+jobs:
+  zip-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Create STL bundle
+        run: |
+          set -euo pipefail
+
+          # ---- Zip up ALL stls ----
+          # Entries ending with /** are treated as directories and zipped
+          # recursively. Brackets in filenames (e.g. [a]_foo.stl) are
+          # handled literally because we use quoted array expansion and
+          # never let the shell glob-expand these strings.
+          FILES=(
+            'STLs/**'
+          )
+
+          # Build the final list: strip trailing /** for directory entries,
+          # validate everything exists, and fail loudly on typos.
+          TO_ZIP=()
+          MISSING=0
+          for entry in "${FILES[@]}"; do
+            if [[ "$entry" == *"/**" ]]; then
+              dir="${entry%"/**"}"
+              if [ ! -d "$dir" ]; then
+                echo "::error::Directory not found: $dir"
+                MISSING=1
+              else
+                TO_ZIP+=( "$dir" )
+              fi
+            else
+              if [ ! -e "$entry" ]; then
+                echo "::error::File not found: $entry"
+                MISSING=1
+              else
+                TO_ZIP+=( "$entry" )
+              fi
+            fi
+          done
+          if [ "$MISSING" -ne 0 ]; then
+            exit 1
+          fi
+
+          echo "Zipping ${#TO_ZIP[@]} entry/entries..."
+          # Quoted expansion — bash does NOT glob-expand, so [a]_foo.stl
+          # is passed literally to zip.
+          zip -r micron-stls.zip "${TO_ZIP[@]}"
+
+      - name: Create LDO kit bundle
+        run: |
+          set -euo pipefail
+
+          # ---- Files to include in the LDO kit bundle ----
+          # Entries ending with /** are treated as directories and zipped
+          # recursively. Brackets in filenames (e.g. [a]_foo.stl) are
+          # handled literally because we use quoted array expansion and
+          # never let the shell glob-expand these strings.
+          FILES=(
+            'STLs/Electronics/Controller_Mounts/LDO/Leviathan_2pc.stl'
+            'STLs/Electronics/Controller_Mounts/pcb_din_clip_x3.stl'
+            'STLs/Electronics/PSU_Mounts/UHP_200_din_bracket_x2.stl'
+            'STLs/Electronics/1515_Din_rail_mount_x4.stl'
+            'STLs/Gantry/AB_Drives/double_shear_mounts/[a]_double_shear_a_drive_x1.stl'
+            'STLs/Gantry/AB_Drives/double_shear_mounts/[a]_double_shear_b_drive_x1.stl'
+            'STLs/Gantry/AB_Drives/double_shear_mounts/ab_drive_twist_lock_bearing_retainer_x2.stl'
+            'STLs/Gantry/AB_Drives/[a]_y_endstop_sensorless_plug_x1.stl'
+            'STLs/Gantry/AB_Drives/a_drive_lower_pinned_x1.stl'
+            'STLs/Gantry/AB_Drives/a_drive_upper_pinned_x1.stl'
+            'STLs/Gantry/AB_Drives/b_drive_lower_pinned_x1.stl'
+            'STLs/Gantry/AB_Drives/b_drive_upper_pinned_x1.stl'
+            'STLs/Gantry/Idlers/[a]_front_cover_x2.stl'
+            'STLs/Gantry/Idlers/[a]_idler_carrier_pinned_x2.stl'
+            'STLs/Gantry/Idlers/idler_housing_x2.stl'
+            'STLs/Gantry/X_Axis/x_carriage_mgn9h_x1.stl'
+            'STLs/Gantry/X_Axis/XY_Joints/Live_Idlers/**'
+            'STLs/Gantry/X_Axis/Probes/klicky_probe_wired_mount_x1.stl'
+            'STLs/Gantry/X_Axis/Probes/[a]_x_endstop_sensorless_bumper_x1.stl'
+            'STLs/Gantry/[a]_klicky_gantry_dock.stl'
+            'STLs/Gantry/[a]_klicky_gantry_probe_dock.stl'
+            'STLs/Gantry/[a]_z_belt_clamp_mirror_x4.stl'
+            'STLs/Gantry/[a]_z_belt_clamp_x4.stl'
+            'STLs/Gantry/Z_Joints/[a]_rigid_z_joints_x4.stl'
+            'STLs/MISC/[a]_handle_mounting_cover_a_x2.stl'
+            'STLs/MISC/[a]_handle_mounting_cover_b_x2.stl'
+            'STLs/MISC/[a]_railstops_x8.stl'
+            'STLs/MISC/main_handle_x2.stl'
+            'STLs/MISC/Filter/[a]_cartridge_lid_x1.stl'
+            'STLs/MISC/Filter/[a]_cartridge_removal_key_x1.stl'
+            'STLs/MISC/Filter/[a]_filter_magnet_insert_x2.stl'
+            'STLs/MISC/Filter/[a]_plenum_lid_x1.stl'
+            'STLs/MISC/Filter/cartridge_x1.stl'
+            'STLs/MISC/Filter/plenum_x1.stl'
+            'STLs/Panels/[a]_bowden_tube_entry_inside_cover_MMU_x1.stl'
+            'STLs/Panels/[a]_hex_insert_a_x1.stl'
+            'STLs/Panels/[a]_hex_insert_b_x1.stl'
+            'STLs/Panels/logo_insert_x1.stl'
+            'STLs/Panels/bowden_tube_entry_rear_cover_M10_MMU_x1.stl'
+            'STLs/Panels/bowden_tube_holder_x2.stl'
+            'STLs/Panels/[a]_spool_holder_mount_x1_.stl'
+            'STLs/Panels/[a]_twist_lock_key_x50.stl'
+            'STLs/Panels/[a]_z_cover_a_x2.stl'
+            'STLs/Panels/[a]_z_cover_b_x2.stl'
+            'STLs/Panels/bottom_hinge_leaf_x1.stl'
+            'STLs/Panels/bottom_left_corner_x1.stl'
+            'STLs/Panels/hinge_barrel_x2.stl'
+            'STLs/Panels/spool_holder_bar_x1.stl'
+            'STLs/Panels/top_hinge_leaf_x1.stl'
+            'STLs/Panels/top_left_corner_x1.stl'
+            'STLs/Panels/twist_lock_center_x15.stl'
+            'STLs/Panels/twist_lock_corner_x16.stl'
+            'STLs/Panels/z_belt_gap_cover_x4.stl'
+            'STLs/Skirts/180/[a]_center_fan_skirt_accent_x2.stl'
+            'STLs/Skirts/180/[a]_fan_grill_x2.stl'
+            'STLs/Skirts/180/[a]_headless_skirt_accent_x1.stl'
+            'STLs/Skirts/180/[a]_side_skirt_a_accent_x2.stl'
+            'STLs/Skirts/180/[a]_side_skirt_b_accent_x2.stl'
+            'STLs/Skirts/180/fan_mount_x2.stl'
+            'STLs/Skirts/180/rear_skirt_inlet_adamstech_x1.stl'
+            'STLs/Skirts/180/side_skirt_a_x2.stl'
+            'STLs/Skirts/180/side_skirt_b_x2.stl'
+            'STLs/Skirts/Displays/Waveshare43_BTT43/**'
+            'STLs/Skirts/[a]_keystone_blank_insert_x2.stl'
+            'STLs/Tools/RailTools/mgn9_1515_rail_guide_x2.stl'
+            'STLs/Tools/RailTools/micron_key_rail_alignment_tool_x2.stl'
+            'STLs/Tools/RailTools/x-rail-jig-x2.stl'
+            'STLs/Tools/RailTools/y-rail-tool-180mm-x2.stl'
+            'STLs/Tools/RailTools/z-rail-jig-x2.stl'
+            'STLs/Tools/[a]_(optional)_NDDN_single_x150.stl'
+            'STLs/Z_Chain/2_hole_chain/[a]_lower_chain_mount_2_hole_x1.stl'
+            'STLs/Z_Chain/2_hole_chain/[a]_pg7_umbilical_z_chain_2_hole_x1.stl'
+            'STLs/Z_Chain/[a]_z_chain_guide_with_thermistor_x1.stl'
+            'STLs/Z_Chain/split_pg7_strain_relief.3mf'
+            'STLs/Z_Drive/[a]_foot_mount_a_x2.stl'
+            'STLs/Z_Drive/[a]_foot_mount_b_x2.stl'
+            'STLs/Z_Drive/[a]_nema_17_motor_mount_x4.stl'
+            'STLs/Z_Drive/[a]_shaft_assembly_cover_a_x2.stl'
+            'STLs/Z_Drive/[a]_shaft_assembly_cover_b_x2.stl'
+            'STLs/Z_Drive/main_body_a_x2.stl'
+            'STLs/Z_Drive/main_body_b_x2.stl'
+            'STLs/Z_Drive/tensioner_housing_a_x2.stl'
+            'STLs/Z_Drive/tensioner_housing_b_x2.stl'
+            'STLs/Z_Idlers/[a]_z_idler_toothed_pulley_pinned_x4.stl'
+            'STLs/Z_Idlers/idler_body_x4.stl'
+            'STLs/MISC/bed_wagos_3.stl'
+            'STLs/Kit_Specific_Parts/LDO/**'
+          )
+
+          # Build the final list: strip trailing /** for directory entries,
+          # validate everything exists, and fail loudly on typos.
+          TO_ZIP=()
+          MISSING=0
+          for entry in "${FILES[@]}"; do
+            if [[ "$entry" == *"/**" ]]; then
+              dir="${entry%"/**"}"
+              if [ ! -d "$dir" ]; then
+                echo "::error::Directory not found: $dir"
+                MISSING=1
+              else
+                TO_ZIP+=( "$dir" )
+              fi
+            else
+              if [ ! -e "$entry" ]; then
+                echo "::error::File not found: $entry"
+                MISSING=1
+              else
+                TO_ZIP+=( "$entry" )
+              fi
+            fi
+          done
+          if [ "$MISSING" -ne 0 ]; then
+            exit 1
+          fi
+
+          echo "Zipping ${#TO_ZIP[@]} entry/entries..."
+          # Quoted expansion — bash does NOT glob-expand, so [a]_foo.stl
+          # is passed literally to zip.
+          zip -r micron-ldo-kit.zip "${TO_ZIP[@]}"
+
+      - name: Create FormBot kit bundle
+        run: |
+          set -euo pipefail
+
+          # ---- Files to include in the Formbot kit bundle ----
+          # Entries ending with /** are treated as directories and zipped
+          # recursively. Brackets in filenames (e.g. [a]_foo.stl) are
+          # handled literally because we use quoted array expansion and
+          # never let the shell glob-expand these strings.
+          FILES=(
+            'STLs/Electronics/Controller_Mounts/BTT/Manta_M8P_2pc.stl'
+            'STLs/Electronics/Controller_Mounts/pcb_din_clip_x3.stl'
+            'STLs/Electronics/PSU_Mounts/UHP_200_din_bracket_x2.stl'
+            'STLs/Electronics/1515_Din_rail_mount_x4.stl'
+            'STLs/Gantry/AB_Drives/a_drive_lower_pinned_x1.stl'
+            'STLs/Gantry/AB_Drives/a_drive_upper_pinned_x1.stl'
+            'STLs/Gantry/AB_Drives/b_drive_lower_pinned_x1.stl'
+            'STLs/Gantry/AB_Drives/b_drive_upper_pinned_x1.stl'
+            'STLs/Gantry/Idlers/[a]_front_cover_x2.stl'
+            'STLs/Gantry/Idlers/[a]_idler_carrier_x2.stl'
+            'STLs/Gantry/Idlers/idler_housing_x2.stl'
+            'STLs/Gantry/X_Axis/x_carriage_mgn9h_x1.stl'
+            'STLs/Gantry/X_Axis/XY_Joints/xy_joint_lower_left_pinned_x1.stl'
+            'STLs/Gantry/X_Axis/XY_Joints/xy_joint_lower_right_pinned_x1.stl'
+            'STLs/Gantry/X_Axis/XY_Joints/xy_joint_upper_left_pinned_x1.stl'
+            'STLs/Gantry/X_Axis/XY_Joints/xy_joint_upper_right_pinned_x1.stl'
+            'STLs/Gantry/X_Axis/Probes/klicky_probe_pcb_mount_x1.stl'
+            'STLs/Gantry/[a]_klicky_gantry_dock.stl'
+            'STLs/Gantry/[a]_klicky_gantry_probe_dock.stl'
+            'STLs/Gantry/[a]_z_belt_clamp_mirror_x4.stl'
+            'STLs/Gantry/[a]_z_belt_clamp_x4.stl'
+            'STLs/Gantry/Z_Joints/[a]_z_joint_KGLM_x4.stl'
+            'STLs/MISC/[a]_handle_mounting_cover_a_x2.stl'
+            'STLs/MISC/[a]_handle_mounting_cover_b_x2.stl'
+            'STLs/MISC/[a]_railstops_x8.stl'
+            'STLs/MISC/main_handle_x2.stl'
+            'STLs/MISC/Bed_Fans/**'
+            'STLs/MISC/Filter/[a]_cartridge_lid_x1.stl'
+            'STLs/MISC/Filter/[a]_cartridge_removal_key_x1.stl'
+            'STLs/MISC/Filter/[a]_filter_magnet_insert_x2.stl'
+            'STLs/MISC/Filter/[a]_plenum_lid_x1.stl'
+            'STLs/MISC/Filter/cartridge_x1.stl'
+            'STLs/MISC/Filter/plenum_x1.stl'
+            'STLs/Panels/[a]_bowden_tube_entry_inside_cover_MMU_x1.stl'
+            'STLs/Panels/[a]_hex_insert_a_x1.stl'
+            'STLs/Panels/[a]_hex_insert_b_x1.stl'
+            'STLs/Panels/logo_insert_x1.stl'
+            'STLs/Panels/bowden_tube_entry_rear_cover_M10_MMU_x1.stl'
+            'STLs/Panels/bowden_tube_holder_x2.stl'
+            'STLs/Panels/[a]_spool_holder_mount_x1_.stl'
+            'STLs/Panels/[a]_twist_lock_key_x50.stl'
+            'STLs/Panels/[a]_z_cover_a_x2.stl'
+            'STLs/Panels/[a]_z_cover_b_x2.stl'
+            'STLs/Panels/bottom_hinge_leaf_x1.stl'
+            'STLs/Panels/bottom_left_corner_x1.stl'
+            'STLs/Panels/hinge_barrel_x2.stl'
+            'STLs/Panels/spool_holder_bar_x1.stl'
+            'STLs/Panels/top_hinge_leaf_x1.stl'
+            'STLs/Panels/top_left_corner_x1.stl'
+            'STLs/Panels/twist_lock_center_x15.stl'
+            'STLs/Panels/twist_lock_corner_x16.stl'
+            'STLs/Panels/z_belt_gap_cover_x4.stl'
+            'STLs/Skirts/180/[a]_center_fan_skirt_accent_x2.stl'
+            'STLs/Skirts/180/[a]_fan_grill_x2.stl'
+            'STLs/Skirts/180/[a]_headless_skirt_accent_x1.stl'
+            'STLs/Skirts/180/[a]_side_skirt_a_accent_x2.stl'
+            'STLs/Skirts/180/[a]_side_skirt_b_accent_x2.stl'
+            'STLs/Skirts/180/fan_mount_x2.stl'
+            'STLs/Skirts/180/rear_skirt_inlet_adamstech_x1.stl'
+            'STLs/Skirts/180/side_skirt_a_x2.stl'
+            'STLs/Skirts/180/side_skirt_b_x2.stl'
+            'STLs/Skirts/Displays/TFT35/**'
+            'STLs/Skirts/[a]_keystone_blank_insert_x2.stl'
+            'STLs/Tools/RailTools/mgn9_1515_rail_guide_x2.stl'
+            'STLs/Tools/RailTools/micron_key_rail_alignment_tool_x2.stl'
+            'STLs/Tools/RailTools/x-rail-jig-x2.stl'
+            'STLs/Tools/RailTools/y-rail-tool-180mm-x2.stl'
+            'STLs/Tools/RailTools/z-rail-jig-x2.stl'
+            'STLs/Tools/[a]_(optional)_NDDN_single_x150.stl'
+            'STLs/Z_Chain/3_hole_chain/[a]_lower_chain_mount_3_hole_x1_.stl'
+            'STLs/Z_Chain/3_hole_chain/[a]_pg7_umbilical_z_chain_3_hole_x1.stl'
+            'STLs/Z_Chain/[a]_z_chain_guide_with_thermistor_x1.stl'
+            'STLs/Z_Chain/split_pg7_strain_relief.3mf'
+            'STLs/Z_Drive/[a]_foot_mount_a_x2.stl'
+            'STLs/Z_Drive/[a]_foot_mount_b_x2.stl'
+            'STLs/Z_Drive/[a]_nema_17_motor_mount_x4.stl'
+            'STLs/Z_Drive/[a]_shaft_assembly_cover_a_x2.stl'
+            'STLs/Z_Drive/[a]_shaft_assembly_cover_b_x2.stl'
+            'STLs/Z_Drive/main_body_a_x2.stl'
+            'STLs/Z_Drive/main_body_b_x2.stl'
+            'STLs/Z_Drive/tensioner_housing_a_x2.stl'
+            'STLs/Z_Drive/tensioner_housing_b_x2.stl'
+            'STLs/Z_Idlers/[a]_z_idler_toothed_pulley_pinned_x4.stl'
+            'STLs/Z_Idlers/idler_body_x4.stl'
+            'STLs/MISC/bed_wagos_5.stl'
+          )
+
+          TO_ZIP=()
+          MISSING=0
+          for entry in "${FILES[@]}"; do
+            if [[ "$entry" == *"/**" ]]; then
+              dir="${entry%"/**"}"
+              if [ ! -d "$dir" ]; then
+                echo "::error::Directory not found: $dir"
+                MISSING=1
+              else
+                TO_ZIP+=( "$dir" )
+              fi
+            else
+              if [ ! -e "$entry" ]; then
+                echo "::error::File not found: $entry"
+                MISSING=1
+              else
+                TO_ZIP+=( "$entry" )
+              fi
+            fi
+          done
+          if [ "$MISSING" -ne 0 ]; then
+            exit 1
+          fi
+
+          echo "Zipping ${#TO_ZIP[@]} entry/entries..."
+          zip -r micron-formbot-kit.zip "${TO_ZIP[@]}"
+
+      - name: Publish to "latest" release (overwrite)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Micron — Latest
+          body: |
+            Automated bundles generated from commit ${{ github.sha }}
+            on ${{ github.event.head_commit.timestamp }}.
+          files: |
+            micron-stls.zip
+            micron-ldo-kit.zip
+            micron-formbot-kit.zip
+          fail_on_unmatched_files: true
+          make_latest: 'true'
